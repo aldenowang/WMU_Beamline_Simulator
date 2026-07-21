@@ -74,8 +74,7 @@ DATA_DIR = os.path.join(REPO_ROOT, "data")
 # dataviz reference palette (validated CVD-safe triple, see
 # fit_dndtheta_envelope.py / MEMORY for the validation run):
 COLOR_BARS = "#2a78d6"      # histogram
-COLOR_THEORY = "#eb6834"    # theoretical curve (computed, no fitting)
-COLOR_FIT = "#1baf7a"       # best-fit curve
+COLOR_ENVELOPE = "#eda100"  # upper-envelope fit, N(theta) = C/sin^4(theta/2)
 COLOR_INK = "#0b0b0b"
 COLOR_SECONDARY_INK = "#52514e"
 COLOR_GRID = "#e1e0d9"
@@ -111,6 +110,36 @@ def load_angles(csv_path):
 def dndtheta_model(theta_deg, C):
     theta_rad = np.radians(theta_deg)
     return C * np.sin(theta_rad) / np.sin(theta_rad / 2.0) ** 4
+
+
+# ---------------------------------------------------------------------
+# Bare 1/sin^4(theta/2) shape -- the raw Rutherford cross-section without
+# the sin(theta) solid-angle Jacobian that turns it into dN/dtheta. Not
+# the correct shape for a counts-vs-theta histogram (see docstring), but
+# fit directly against N here as a second, purely empirical regression to
+# compare against the physically-correct curve above.
+# ---------------------------------------------------------------------
+def inv_sin4_shape(theta_deg):
+    theta_rad = np.radians(theta_deg)
+    return 1.0 / np.sin(theta_rad / 2.0) ** 4
+
+
+def inv_sin4_model(theta_deg, C):
+    return C * inv_sin4_shape(theta_deg)
+
+
+def r_squared_log10(y, y_pred):
+    """R^2 on log10(y) vs log10(y_pred), one point per bin (bin center, bin
+    top). This data spans ~6 orders of magnitude, so a linear-space R^2 is
+    dominated almost entirely by the single largest-count bin (verified: for
+    this dataset one bin alone accounted for >95% of the linear sum of
+    squared residuals) -- log-space matches the log-scale y-axis these plots
+    already use and reflects fit quality across all bins, not just the peak."""
+    logy = np.log10(np.asarray(y, dtype=float))
+    logpred = np.log10(y_pred)
+    ss_res = np.sum((logy - logpred) ** 2)
+    ss_tot = np.sum((logy - logy.mean()) ** 2)
+    return 1.0 - ss_res / ss_tot
 
 
 def theoretical_amplitude(n_total, Z1, Z2, E_mev, rho, t_cm, M):
@@ -149,10 +178,10 @@ def main():
     parser.add_argument("--rho", type=float, default=19.3, help="target density, g/cm^3 (default 19.3, gold)")
     parser.add_argument("--t", type=float, default=0.0001, help="foil thickness, cm (default 0.0001 = 1 um, matches DetectorConstruction.cc kFoilHalfZ)")
     parser.add_argument("--M", type=float, default=197.0, help="target molar mass, g/mol (default 197, gold)")
+    parser.add_argument("--quantile", type=float, default=0.95,
+                         help="upper-envelope quantile for the bare 1/sin^4(theta/2) regression "
+                              "(default 0.95, matches fit_dndtheta_envelope.py's convention)")
     parser.add_argument("--plot", action="store_true", help="also write a PNG plot")
-    parser.add_argument("--fit-only", action="store_true",
-                         help="in the plot, show only the histogram + best-fit curve (omit the "
-                              "theoretical/computed curve and its legend entry)")
     args = parser.parse_args()
 
     csv_path = args.csv or find_latest_foil_csv()
@@ -210,6 +239,11 @@ def main():
     from scipy.stats import chi2 as chi2_dist
     p_value = float(chi2_dist.sf(chi2, dof)) if dof > 0 else float("nan")
 
+    # R^2 in N (counts-per-bin) space, treating each of the n_bins_fit bins
+    # in the fit region as one point (bin center, bin height/top).
+    fit_N_at_mask = dndtheta_model(centers_deg[mask], C_fit) * binwidth_rad
+    r2_fit = r_squared_log10(counts[mask], fit_N_at_mask)
+
     # ---- theory ------------------------------------------------------
     C_theory, parts = theoretical_amplitude(n_total, args.Z1, args.Z2, args.E, args.rho, args.t, args.M)
 
@@ -235,47 +269,72 @@ def main():
     print(f"  chi2                                               = {chi2:.4f}")
     print(f"  reduced chi2 = chi2 / dof                          = {reduced_chi2:.4f}")
     print(f"  p-value (chi2.sf, dof={dof})                       = {p_value:.4g}")
+    print(f"  R^2 (log10 N space, n={n_bins_fit} fit-region bins)       = {r2_fit:.4f}")
+
+    # ---- second regression: bare C/sin^4(theta/2), upper-envelope fit ----
+    # No Jacobian factor. Per project convention (see fit_dndtheta_envelope.py
+    # / MEMORY), this is an upper-envelope/quantile fit, not least-squares:
+    # for each bin, C_i = N_i / f(theta_i) is the amplitude that makes the
+    # curve pass exactly through that bin; taking the q-th quantile of {C_i}
+    # gives a closed-form curve that sits at/above exactly that fraction of
+    # bins, no optimizer involved.
+    f_vals2 = inv_sin4_shape(centers_deg[mask])
+    c_i2 = counts[mask] / f_vals2
+    C_fit2 = float(np.quantile(c_i2, args.quantile))
+    predicted2 = C_fit2 * f_vals2
+    coverage2 = float(np.mean(counts[mask] <= predicted2))
+    n_params2 = 1
+    dof2 = n_bins_fit - n_params2
+
+    # R^2 over the same n_bins_fit fit-region bins, same convention as r2_fit.
+    r2_fit2 = r_squared_log10(counts[mask], predicted2)
+
+    print()
+    print(f"Upper-envelope fit -- N(theta) = C * 1/sin^4(theta/2), {args.quantile*100:.0f}th percentile of "
+          f"C_i = N_i/f(theta_i) (not least-squares):")
+    print(f"  C_fit             = {C_fit2:.6e} counts/bin")
+    print(f"  dof = {n_bins_fit} bins - {n_params2}                   = {dof2}")
+    print(f"  coverage achieved = {coverage2*100:.2f}% of {n_bins_fit} bins")
+    print(f"  R^2 (log10 N space, n={n_bins_fit} fit-region bins)       = {r2_fit2:.4f}")
 
     if args.plot:
         import matplotlib.pyplot as plt
 
         theta_plot = np.linspace(centers_deg[mask].min(), centers_deg.max(), 400)
-        fit_curve = dndtheta_model(theta_plot, C_fit)
 
         fig, ax = plt.subplots(figsize=(9, 6), dpi=150)
         fig.patch.set_facecolor("#fcfcfb")
         style_axes(ax)
 
-        ax.bar(centers_deg[counts > 0], density[counts > 0], width=args.binwidth * 0.92,
+        ax.bar(centers_deg[counts > 0], counts[counts > 0], width=args.binwidth * 0.92,
                color=COLOR_BARS, edgecolor="#fcfcfb", linewidth=0.3,
-               label=f"Simulated foil-exit angles, dN/d$\\theta$ (n={n_total})")
-        if not args.fit_only:
-            theory_curve = dndtheta_model(theta_plot, C_theory)
-            ax.plot(theta_plot, theory_curve, color=COLOR_THEORY, linewidth=2, linestyle="--",
-                    label=f"Theoretical (computed): $C_{{theory}}$ = {C_theory:.3e}")
-        ax.plot(theta_plot, fit_curve, color=COLOR_FIT, linewidth=2.5, zorder=5,
-                label=f"Best fit (curve_fit): $C_{{fit}}$ = {C_fit:.3e}")
+               label=f"Simulated foil-exit angles, N (n={n_total})")
+        envelope_curve_N = inv_sin4_model(theta_plot, C_fit2)
+        ax.plot(theta_plot, envelope_curve_N, color=COLOR_ENVELOPE, linewidth=2.5, linestyle="-.", zorder=4,
+                label=fr"$1/\sin^4(\theta/2)$ envelope ({args.quantile*100:.0f}th pct): "
+                      fr"$C$ = {C_fit2:.3e}, $R^2_{{\log}}$ = {r2_fit2:.3f}")
         ax.axvline(theta_min, color=COLOR_AXIS, linewidth=1, linestyle=":")
 
         ax.set_yscale("log")
         ax.set_xlabel(r"Scattering angle, $\theta$ (degrees)", color=COLOR_INK)
-        ax.set_ylabel(r"$dN/d\theta$ (counts per radian, log scale)", color=COLOR_INK)
-        title = ("Rutherford dN/d$\\theta$: best fit vs. simulated histogram" if args.fit_only
-                 else "Rutherford dN/d$\\theta$: theory vs. best fit vs. simulated histogram")
-        ax.set_title(title, color=COLOR_INK, fontsize=13)
+        ax.set_ylabel("N (particles per bin, log scale)", color=COLOR_INK)
+        ax.set_title(r"$N(\theta) = C/\sin^4(\theta/2)$ upper-envelope fit vs. simulated histogram",
+                     color=COLOR_INK, fontsize=13)
         ax.legend(frameon=False, labelcolor=COLOR_INK, fontsize=9)
 
         eqn_text = (
-            r"$\dfrac{dN}{d\theta} = C \cdot \dfrac{\sin\theta}{\sin^4(\theta/2)}$"
+            r"$N(\theta) = C \cdot \dfrac{1}{\sin^4(\theta/2)}$"
             "\n"
-            fr"$C = {C_fit:.3f} \pm {C_fit_err:.3f}$ counts/rad"
+            fr"$C = {C_fit2:.3f}$ counts/bin ({args.quantile*100:.0f}th-pct envelope)"
             "\n"
-            fr"dof = {n_bins_fit} bins $-$ {n_params} = {dof}"
+            fr"dof = {n_bins_fit} bins $-$ {n_params2} = {dof2}"
+            "\n"
+            fr"coverage = {coverage2*100:.1f}%, $R^2_{{\log}}$ = {r2_fit2:.4f}"
         )
-        ax.text(0.60, 0.60, eqn_text, transform=ax.transAxes, fontsize=11,
+        ax.text(0.60, 0.55, eqn_text, transform=ax.transAxes, fontsize=11,
                 color=COLOR_INK, ha="left", va="top",
                 bbox=dict(boxstyle="round,pad=0.5", facecolor="#fcfcfb",
-                          edgecolor=COLOR_FIT, linewidth=1.2))
+                          edgecolor=COLOR_ENVELOPE, linewidth=1.2))
 
         fig.tight_layout()
 
