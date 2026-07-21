@@ -144,10 +144,9 @@ void RunAction::EndOfRunAction(const G4Run* run)
          << "------------------------------------------------------------" << G4endl << G4endl;
 
   // Drain the per-particle Rutherford scattering angles (recorded in
-  // SteppingAction on two channels: as each primary leaves the gold foil,
-  // and again if/when it reaches the Faraday cup) to CSVs in the data/
-  // folder, so they can be checked against Rutherford's 1/sin^4(theta/2)
-  // prediction offline. Master-only (worker threads all feed the same
+  // SteppingAction as each primary leaves the gold foil) to a CSV in the
+  // data/ folder, so they can be checked against Rutherford's
+  // 1/sin^4(theta/2) prediction offline. Master-only (worker threads all feed the same
   // recorder; by the time the master's EndOfRunAction runs, every worker has
   // finished) and only for non-animated runs -- SteppingAction only ever
   // records into it under that same condition, but this still guards the
@@ -163,12 +162,7 @@ void RunAction::EndOfRunAction(const G4Run* run)
     foilFileName << "../data/scattering_angles_foil_" << timestamp.str() << ".csv";
     ScatteringRecorder::WriteCsvAndClear(ScatteringRecorder::Channel::FoilExit, foilFileName.str());
 
-    std::ostringstream cupFileName;
-    cupFileName << "../data/scattering_angles_cup_" << timestamp.str() << ".csv";
-    ScatteringRecorder::WriteCsvAndClear(ScatteringRecorder::Channel::FaradayCup, cupFileName.str());
-
-    G4cout << "  --> wrote scattering-angle data to " << foilFileName.str() << " and "
-           << cupFileName.str() << G4endl << G4endl;
+    G4cout << "  --> wrote scattering-angle data to " << foilFileName.str() << G4endl << G4endl;
   }
 }
 

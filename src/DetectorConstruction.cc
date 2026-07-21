@@ -58,22 +58,19 @@ namespace B1
 namespace
 {
 // Vacuum scattering chamber. G4Tubs is built along its local Z axis, which we
-// keep aligned with the beam (matching the primary generator and foil/cup
-// placements below). Its axial half-length and the foil/cup offsets within
-// it come from BeamlineLayout.hh, sized to exactly span the beam path (gun
-// start to the back of the Faraday cup); the chamber is then centered on the
-// actual CAD/GDML model's bounding box (computed at load time below) so the
-// physics geometry fits inside the real model rather than an independent
-// guess. "Height" becomes the transverse radius.
+// keep aligned with the beam (matching the primary generator and foil
+// placement below). Its axial half-length comes from BeamlineLayout.hh,
+// sized so the foil sits at the exact chamber center, 1 m from each wall;
+// the chamber is then centered on the actual CAD/GDML model's bounding box
+// (computed at load time below) so the physics geometry fits inside the
+// real model rather than an independent guess. "Height" becomes the
+// transverse radius.
 constexpr G4double kChamberRadius = 100. * cm / 2.;  // 100.0 cm height spec
 
-// Gold foil target: single sheet, perpendicular to the beam, offset from the
-// chamber's own center per BeamlineLayout::kFoilLocalZ (see above)
+// Gold foil target: single sheet, perpendicular to the beam, at the
+// chamber's own center (BeamlineLayout::kFoilLocalZ == 0)
 constexpr G4double kFoilHalfXY = 1.905 * cm / 2.;  // 1.905 cm x 1.905 cm
 constexpr G4double kFoilHalfZ = 1. * um / 2.;  // 1.0 um thickness
-
-// Faraday cup, on-axis, downstream of the foil
-constexpr G4double kCupRadius = 10. * cm / 2.;  // 10.0 cm inner diameter
 
 // World must contain both the analytic chamber assembly above and the CAD
 // overlay loaded from gdml/my_model.gdml below. As authored, that mesh's
@@ -463,7 +460,7 @@ G4VPhysicalVolume* DetectorConstruction::Construct()
   G4double axialMargin = (gdmlBounds.maxZ - gdmlBounds.minZ) / 2.;
   if (Layout::kChamberAxialHalfLength > axialMargin) {
     G4Exception("DetectorConstruction::Construct", "MyCode0006", FatalException,
-                "Beam path (gun to Faraday cup) does not fit within the GDML model's axial extent");
+                "Beam path (gun to foil) does not fit within the GDML model's axial extent");
   }
 
   //
@@ -493,19 +490,6 @@ G4VPhysicalVolume* DetectorConstruction::Construct()
 
   new G4PVPlacement(nullptr, G4ThreeVector(0., 0., Layout::kFoilLocalZ), logicFoil, "Foil",
                     logicChamber, false, 0, checkOverlaps);
-
-  //
-  // Faraday cup (assumed copper; adjust material if the real cup differs)
-  //
-  G4Material* cupMat = nist->FindOrBuildMaterial("G4_Cu");
-
-  auto solidCup = new G4Tubs("FaradayCup", 0., kCupRadius, Layout::kCupHalfDepth, 0., 360. * deg);
-  auto logicCup = new G4LogicalVolume(solidCup, cupMat, "FaradayCup");
-
-  new G4PVPlacement(nullptr, G4ThreeVector(0., 0., Layout::kCupLocalZ), logicCup, "FaradayCup",
-                    logicChamber, false, 0, checkOverlaps);
-
-  fCupVolume = logicCup;
 
   //
   // CAD model overlay (rendering only; kept as "vacuum" material rather than

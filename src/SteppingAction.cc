@@ -51,11 +51,10 @@ SteppingAction::SteppingAction(EventAction* eventAction) : fEventAction(eventAct
 
 void SteppingAction::UserSteppingAction(const G4Step* step)
 {
-  if (!fScoringVolume || !fCupVolume) {
+  if (!fScoringVolume) {
     const auto detConstruction = static_cast<const DetectorConstruction*>(
       G4RunManager::GetRunManager()->GetUserDetectorConstruction());
-    if (!fScoringVolume) fScoringVolume = detConstruction->GetScoringVolume();
-    if (!fCupVolume) fCupVolume = detConstruction->GetCupVolume();
+    fScoringVolume = detConstruction->GetScoringVolume();
   }
 
   // get volume of the current step
@@ -74,7 +73,7 @@ void SteppingAction::UserSteppingAction(const G4Step* step)
     const G4Track* track = step->GetTrack();
     const G4ThreeVector& vertexDir = track->GetVertexMomentumDirection();
 
-    // Channel 1: the instant a primary leaves the gold foil -- the true
+    // The instant a primary leaves the gold foil -- the true
     // scattering event, over the full angular range including the rare
     // large-angle single-Coulomb-scattering tail Rutherford's law predicts.
     // Uses the POST-step point: the scattering happened during this step,
@@ -82,22 +81,6 @@ void SteppingAction::UserSteppingAction(const G4Step* step)
     if (volume == fScoringVolume && step->IsLastStepInVolume()) {
       G4double angleDeg = step->GetPostStepPoint()->GetMomentumDirection().angle(vertexDir) / deg;
       ScatteringRecorder::Record(ScatteringRecorder::Channel::FoilExit, angleDeg);
-    }
-
-    // Channel 2: the instant a primary reaches the Faraday cup -- the last
-    // thing in the beamline that actually stops it. Uses the PRE-step
-    // point, not track->GetMomentumDirection(): IsFirstStepInVolume() is the
-    // step that *starts* at the cup's boundary, so by the time
-    // UserSteppingAction runs, the track has already travelled this whole
-    // step's length through the cup's copper and picked up extra
-    // multiple-scattering deflection there. The pre-step point is the
-    // direction at the instant of impact, before any of that -- the same
-    // thing a real detector positioned right at the cup's face would
-    // measure. Because the cup is a narrow tube on the beam axis, this
-    // channel only ever sees the small forward cone.
-    if (volume == fCupVolume && step->IsFirstStepInVolume()) {
-      G4double angleDeg = step->GetPreStepPoint()->GetMomentumDirection().angle(vertexDir) / deg;
-      ScatteringRecorder::Record(ScatteringRecorder::Channel::FaradayCup, angleDeg);
     }
   }
 

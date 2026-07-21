@@ -1,23 +1,16 @@
 #!/usr/bin/env python3
 """Plot simulated proton scattering angles against the Rutherford 1/sin^4(theta/2) prediction.
 
-Reads the scattering_angles_foil_*.csv and scattering_angles_cup_*.csv files
-written by RunAction (one "angle_deg" column, one row per primary particle):
-
-  - foil: angle the instant each primary leaves the gold foil -- the actual
-    scattering event, spanning the full angular range including the rare
-    large-angle single-Coulomb-scattering tail Rutherford's law predicts.
-    This is the one to check the 1/sin^4(theta/2) law against.
-  - cup: angle the instant a primary reaches the Faraday cup, the last thing
-    in the beamline that stops it. The cup is a narrow on-axis tube, so it
-    only ever sees a small forward cone dominated by multiple scattering,
-    not the Rutherford tail -- plotted for reference, not as a law check.
+Reads the scattering_angles_foil_*.csv files written by RunAction (one
+"angle_deg" column, one row per primary particle): the angle the instant
+each primary leaves the gold foil -- the actual scattering event, spanning
+the full angular range including the rare large-angle single-Coulomb-
+scattering tail Rutherford's law predicts.
 
 Usage:
     python analyze_scattering.py [path/to/scattering_angles_foil_*.csv]
 
-With no argument, uses the newest foil/cup CSV pair in data/ (matched by
-their shared timestamp/event-count suffix).
+With no argument, uses the newest foil CSV in data/.
 """
 
 import csv
@@ -159,45 +152,8 @@ def plot_foil(angles, out_path):
     return out_path
 
 
-def plot_cup(angles, out_path):
-    """Narrow forward-cone cup-hit angles: linear bins, linear counts. This
-    channel can't see the Rutherford tail (the cup's own geometry only
-    accepts a couple of degrees off-axis) -- it's dominated by ordinary
-    multiple scattering, plotted for reference only."""
-    n_bins = 40
-    counts, edges = np.histogram(angles, bins=n_bins)
-    centers = 0.5 * (edges[:-1] + edges[1:])
-    width = edges[1] - edges[0]
-
-    fig, ax = plt.subplots(figsize=(9, 5), dpi=150)
-    fig.patch.set_facecolor("#fcfcfb")
-    style_axes(ax)
-
-    ax.bar(
-        centers,
-        counts,
-        width=width * 0.92,
-        color=COLOR_BARS,
-        edgecolor="#fcfcfb",
-        linewidth=0.5,
-        label=f"Simulated Faraday-cup hits (n={angles.size})",
-    )
-    ax.set_xlabel("Scattering angle from beam path, θ (degrees)", color=COLOR_INK)
-    ax.set_ylabel("Number of particles", color=COLOR_INK)
-    ax.set_title(
-        "Faraday-cup hits vs. angle (narrow forward cone only -- not a Rutherford-law check)",
-        color=COLOR_INK,
-        fontsize=12,
-    )
-    ax.legend(frameon=False, labelcolor=COLOR_INK, fontsize=9)
-    fig.tight_layout()
-    fig.savefig(out_path, facecolor=fig.get_facecolor())
-    return out_path
-
-
 def main():
     foil_csv = sys.argv[1] if len(sys.argv) > 1 else find_latest_foil_csv()
-    cup_csv = foil_csv.replace("scattering_angles_foil_", "scattering_angles_cup_")
 
     foil_angles = load_angles(foil_csv)
     if foil_angles.size == 0:
@@ -205,13 +161,6 @@ def main():
     foil_out = plot_foil(foil_angles, os.path.splitext(foil_csv)[0] + "_plot.png")
     print(f"Read {foil_angles.size} angles from {foil_csv}")
     print(f"Wrote plot to {foil_out}")
-
-    if os.path.exists(cup_csv):
-        cup_angles = load_angles(cup_csv)
-        if cup_angles.size > 0:
-            cup_out = plot_cup(cup_angles, os.path.splitext(cup_csv)[0] + "_plot.png")
-            print(f"Read {cup_angles.size} angles from {cup_csv}")
-            print(f"Wrote plot to {cup_out}")
 
 
 if __name__ == "__main__":

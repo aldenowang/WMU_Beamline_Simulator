@@ -108,12 +108,11 @@
 #
 # To get nice view
 # Show the CAD/GDML model plus the gold foil target; hide the World box and
-# the other analytic physics volumes (Chamber, FaradayCup) that exist purely
-# to drive the simulation and have no interesting shape of their own.
+# the Chamber, the analytic physics volume that exists purely to drive the
+# simulation and has no interesting shape of its own.
 /vis/geometry/set/visibility World 0 false
 /vis/geometry/set/visibility Chamber 0 false
 /vis/geometry/set/visibility Foil 0 true
-/vis/geometry/set/visibility FaradayCup 0 false
 # CADModel colour/transparency is set in DetectorConstruction via G4VisAttributes
 /vis/viewer/set/style surface
 /vis/viewer/set/hiddenMarker true

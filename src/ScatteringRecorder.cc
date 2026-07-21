@@ -15,7 +15,7 @@ namespace B1::ScatteringRecorder
 
 namespace
 {
-constexpr std::size_t kNumChannels = 2;
+constexpr std::size_t kNumChannels = 1;
 
 std::array<std::mutex, kNumChannels> gMutex;
 std::array<std::vector<G4double>, kNumChannels> gAnglesDeg;

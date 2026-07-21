@@ -65,14 +65,8 @@ class DetectorConstruction : public G4VUserDetectorConstruction
 
     G4LogicalVolume* GetScoringVolume() const { return fScoringVolume; }
 
-    // The Faraday cup: the last volume in the beamline that actually stops a
-    // particle (as opposed to the foil, which most particles pass through).
-    // Used by SteppingAction to score the scattering angle.
-    G4LogicalVolume* GetCupVolume() const { return fCupVolume; }
-
   protected:
     G4LogicalVolume* fScoringVolume = nullptr;
-    G4LogicalVolume* fCupVolume = nullptr;
 };
 
 }  // namespace B1
