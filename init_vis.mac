@@ -1,0 +1,21 @@
+# Macro file for the initialization of the ion beam simulation
+# in interactive session
+#
+# Set some default verbose
+/control/verbose 2
+/control/saveHistory
+/run/verbose 2
+#
+# Force single-threaded execution: with the Geant4 default (one worker
+# per core), EventAction::EndOfEventAction's animation-pacing sleep runs
+# on parallel worker threads, so a run finishes in ~kTargetAnimationSeconds
+# divided by the core count instead of the intended wall-clock duration.
+# Pinning to one thread also avoids known instability from multiple
+# workers drawing to the same viewer concurrently.
+/run/numberOfThreads 1
+#
+# Initialize kernel
+/run/initialize
+#
+# Visualization setting
+/control/execute vis.mac

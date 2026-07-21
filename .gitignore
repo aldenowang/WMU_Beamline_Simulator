@@ -1,0 +1,16 @@
+# Build output (CMake build directory, lives at repo root as build/)
+build/
+
+# Simulation output data (large, regenerable via the sim + fit scripts)
+data/*.csv
+
+# Python
+__pycache__/
+*.pyc
+
+# Geant4 / VecGeom scratch
+G4History.macro
+*.wrl
+
+# Editor
+.vscode/
