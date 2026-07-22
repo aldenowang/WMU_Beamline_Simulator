@@ -49,7 +49,7 @@ namespace B1
 namespace
 {
 // Van de Graaff H+ beam parameters
-constexpr G4double kBeamEnergyPerNucleon = 6.0 * MeV;  
+constexpr G4double kBeamEnergyPerNucleon = 12.0 * MeV;  
 constexpr G4double kBeamEnergySpread = 0.0005 * kBeamEnergyPerNucleon;  // 0.05% 
 constexpr G4double kBeamSpotSigma = 0.5 * mm;  // beam radius
 constexpr G4double kBeamAngularSigma = 0.5 * mrad;  

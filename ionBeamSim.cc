@@ -63,9 +63,11 @@
 #include "G4UIExecutive.hh"
 #include "G4UImanager.hh"
 #include "G4VisExecutive.hh"
+#include "Randomize.hh"
 
 #include <algorithm>
 #include <cstdlib>
+#include <ctime>
 #include <string>
 
 using namespace B1;
@@ -263,6 +265,14 @@ void RunMacroFile(const G4String& fileName, int argc, char** argv)
 
 int main(int argc, char** argv)
 {
+  // Without this, CLHEP's default engine seed is fixed, so every run mode
+  // above reproduces bit-identical random sequences (and therefore
+  // bit-identical physics results) across separate process invocations with
+  // the same event count. Seeding from wall-clock time here makes distinct
+  // runs of the executable statistically independent, as expected for a
+  // Monte Carlo simulation.
+  CLHEP::HepRandom::setTheSeed(static_cast<long>(std::time(nullptr)));
+
   if (argc >= 2) {
     const G4String flag = argv[1];
     if (flag == "-measure-bore" || flag == "--measure-bore") {

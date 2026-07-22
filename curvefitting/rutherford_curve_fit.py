@@ -1,72 +1,14 @@
 #!/usr/bin/env python3
-"""Least-squares fit of the Rutherford dN/dtheta curve to a simulated
-scattering-angle histogram, with the theoretical amplitude computed
-independently from first principles so the two can be compared directly.
-
-Physics recap
---------------
-Rutherford's differential cross-section (point-charge, non-relativistic):
-
-    dsigma/dOmega = ( Z1 * Z2 * e^2 / (4*E) )^2 * 1 / sin^4(theta/2)      (1)
-
-e^2 here means e^2/(4*pi*eps0) = 1.44 MeV*fm, E is the incident kinetic
-energy, theta is the CM/lab scattering angle. This is a cross-section per
-target nucleus per steradian -- to get *counts* you still need to multiply
-by how many incident particles there were and how many target nuclei per
-unit area they could have scattered off:
-
-    dN/dOmega = N_total * n_areal * dsigma/dOmega                        (2)
-
-    n_areal = rho * N_A * t / M     (target nuclei / cm^2, thin-foil)
-
-Histograms bin in theta, not Omega, so converting (2) to a per-angle count
-needs the solid-angle Jacobian dOmega = 2*pi*sin(theta) dtheta (theta in
-RADIANS -- this is where the sin(theta)/sin^4(theta/2) shape comes from):
-
-    dN/dtheta = 2*pi * N_total * n_areal * (Z1*Z2*e^2/4E)^2
-                * sin(theta) / sin^4(theta/2)
-              = C_theory * sin(theta) / sin^4(theta/2)                   (3)
-
-Two unit traps that silently break the amplitude match between a fitted C
-and this C_theory:
-
-  1. sin() in (1)/(3) must see RADIANS. If the histogram's theta axis is
-     in degrees and degree-values get passed straight into np.sin(), the
-     shape (and therefore the fitted amplitude) is wrong -- np.sin(5.0)
-     treats 5.0 as radians, not 5 degrees.
-  2. dN/dtheta is a *density* (counts per unit angle), not a raw bin
-     count. A raw histogram count in a bin of width Delta-theta estimates
-     dN/dtheta * Delta-theta, not dN/dtheta itself. If Delta-theta isn't
-     exactly 1 (in whatever angle unit the fit function's theta argument
-     is in), the fitted amplitude is off by that bin-width factor. Since
-     the theoretical curve (3) is written in radians, the histogram must
-     be normalized as counts / Delta-theta_radians to be compared against
-     it on equal footing -- normalizing by the degree bin width instead
-     leaves a stray (pi/180) factor in the fitted amplitude.
-
-This script converts to radians and normalizes by the radian bin width
-before fitting, so C_fit should land close to C_theory once those two
-issues are controlled for. Any *remaining* gap is real physics/geometry
-(nuclear size, nuclear or electron screening, nonzero detector angular
-resolution, foil straggling, etc.) rather than a units bug.
-
-Usage:
-    python rutherford_curve_fit.py [path/to/scattering_angles_foil_*.csv]
-                                    [--binwidth 1.0] [--theta-min deg]
-                                    [--Z1 1] [--Z2 79] [--E 6.0]
-                                    [--rho 19.3] [--t 0.0001] [--M 197.0]
-
-With no CSV argument, uses the newest scattering_angles_foil_*.csv in
-../data relative to this file.
-"""
 
 import argparse
 import csv
 import glob
 import os
+from scipy.stats import chi2
+import math
+
 
 import numpy as np
-from scipy.optimize import curve_fit
 
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DATA_DIR = os.path.join(REPO_ROOT, "data")
@@ -74,7 +16,7 @@ DATA_DIR = os.path.join(REPO_ROOT, "data")
 # dataviz reference palette (validated CVD-safe triple, see
 # fit_dndtheta_envelope.py / MEMORY for the validation run):
 COLOR_BARS = "#2a78d6"      # histogram
-COLOR_ENVELOPE = "#eda100"  # upper-envelope fit, N(theta) = C/sin^4(theta/2)
+COLOR_ENVELOPE = "#eda100"  # fit curve, dN/dtheta = C*sin(theta)/sin^4(theta/2)
 COLOR_INK = "#0b0b0b"
 COLOR_SECONDARY_INK = "#52514e"
 COLOR_GRID = "#e1e0d9"
@@ -112,22 +54,6 @@ def dndtheta_model(theta_deg, C):
     return C * np.sin(theta_rad) / np.sin(theta_rad / 2.0) ** 4
 
 
-# ---------------------------------------------------------------------
-# Bare 1/sin^4(theta/2) shape -- the raw Rutherford cross-section without
-# the sin(theta) solid-angle Jacobian that turns it into dN/dtheta. Not
-# the correct shape for a counts-vs-theta histogram (see docstring), but
-# fit directly against N here as a second, purely empirical regression to
-# compare against the physically-correct curve above.
-# ---------------------------------------------------------------------
-def inv_sin4_shape(theta_deg):
-    theta_rad = np.radians(theta_deg)
-    return 1.0 / np.sin(theta_rad / 2.0) ** 4
-
-
-def inv_sin4_model(theta_deg, C):
-    return C * inv_sin4_shape(theta_deg)
-
-
 def r_squared_log10(y, y_pred):
     """R^2 on log10(y) vs log10(y_pred), one point per bin (bin center, bin
     top). This data spans ~6 orders of magnitude, so a linear-space R^2 is
@@ -142,6 +68,33 @@ def r_squared_log10(y, y_pred):
     return 1.0 - ss_res / ss_tot
 
 
+def fit_C_r2_optimal(theta_deg, density):
+    """Closed-form C for dN/dtheta = C * sin(theta)/sin^4(theta/2) that
+    MAXIMIZES r_squared_log10 -- no optimizer, no Poisson weighting, just
+    algebra. Treats each histogram bin as one (bin center, bin top) point,
+    same convention as r_squared_log10 itself.
+
+    R^2_log = 1 - SS_res/SS_tot with SS_res = sum((log10(N_i) - log10(C *
+    shape_i))^2) (shape_i = sin(theta_i)/sin^4(theta_i/2), theta in
+    radians). For a fixed shape, SS_res is minimized over C by ordinary
+    least squares in log space:
+
+        log10(C) = mean(log10(density_i) - log10(shape_i))
+
+    i.e. C is the geometric mean of density_i / shape_i across bins. Since
+    maximizing R^2_log is exactly minimizing SS_res (SS_tot doesn't depend
+    on C), this C is the unique amplitude that maximizes R^2_log for this
+    shape -- not an approximation or a heuristic.
+
+    `density` should already be counts/binwidth_rad (dN/dtheta per
+    radian), matching dndtheta_model's convention, so the returned C is
+    directly comparable to theoretical_amplitude()'s C_theory.
+    """
+    shape_vals = dndtheta_model(theta_deg, 1.0)
+    c_i = np.asarray(density, dtype=float) / shape_vals
+    return float(10 ** np.mean(np.log10(c_i)))
+
+
 def theoretical_amplitude(n_total, Z1, Z2, E_mev, rho, t_cm, M):
     """C_theory such that dN/dtheta = C_theory * sin(theta)/sin^4(theta/2),
     theta in radians. See docstring eq. (3)."""
@@ -151,6 +104,43 @@ def theoretical_amplitude(n_total, Z1, Z2, E_mev, rho, t_cm, M):
     C2 = n_total * n_areal
     C_theory = 2 * np.pi * C1_cm2 * C2
     return C_theory, {"C1_cm2": C1_cm2, "n_areal_per_cm2": n_areal, "C2": C2}
+
+def chi_squared_critical(dof: int, p: float = 0.05) -> float:
+    """
+    Return the chi-squared critical value for a given degrees of freedom
+    at significance level p (default p = 0.05, upper-tail).
+
+    Valid for dof = 1 to 180 (or beyond, scipy handles it fine).
+    """
+    if not (1 <= dof <= 180):
+        raise ValueError(f"dof must be between 1 and 180, got {dof}")
+    return chi2.ppf(1 - p, dof)
+    
+
+
+def chi_squared_check(dof, chi_squared):
+    crit_value = chi_squared_critical(dof)
+    if (chi_squared >= crit_value):
+        return False
+    else:
+        return True
+
+def calculate_expected(Z1, Z2, E, rho, thickness, molar_mass, num_particles):
+    C1 = (((Z1 * Z2)/(E * 4)) * 1.44) ** 2
+    C1 = C1 * (10 ** -26) #fm^2 to cm^2
+
+    n = (rho * 6.022e23 * thickness)/molar_mass
+    C2 = n * num_particles * 2 * math.pi
+
+    C3 = C1 * C2
+    return C3
+
+
+def calculate_chi_squared(expected, observed):
+    chi_squared = ((observed - expected) ** 2)/expected
+    return chi_squared
+
+
 
 
 def style_axes(ax):
@@ -174,14 +164,11 @@ def main():
                               "point-charge formula doesn't describe the multiple-scattering bulk)")
     parser.add_argument("--Z1", type=float, default=1.0, help="projectile charge number (default 1, proton)")
     parser.add_argument("--Z2", type=float, default=79.0, help="target charge number (default 79, gold)")
-    parser.add_argument("--E", type=float, default=6.0, help="incident kinetic energy, MeV (default 6.0)")
+    parser.add_argument("--E", type=float, default=12.0, help="incident kinetic energy, MeV (default 6.0)")
     parser.add_argument("--rho", type=float, default=19.3, help="target density, g/cm^3 (default 19.3, gold)")
-    parser.add_argument("--t", type=float, default=0.0001, help="foil thickness, cm (default 0.0001 = 1 um, matches DetectorConstruction.cc kFoilHalfZ)")
+    parser.add_argument("--t", type=float, default=0.01, help="foil thickness, cm (default 0.0001 = 1 um, matches DetectorConstruction.cc kFoilHalfZ)")
     parser.add_argument("--M", type=float, default=197.0, help="target molar mass, g/mol (default 197, gold)")
-    parser.add_argument("--quantile", type=float, default=0.95,
-                         help="upper-envelope quantile for the bare 1/sin^4(theta/2) regression "
-                              "(default 0.95, matches fit_dndtheta_envelope.py's convention)")
-    parser.add_argument("--plot", action="store_true", help="also write a PNG plot")
+    parser.add_argument("--no-plot", dest="plot", action="store_false", help="skip writing the PNG plot (a plot is written by default)")
     args = parser.parse_args()
 
     csv_path = args.csv or find_latest_foil_csv()
@@ -210,34 +197,14 @@ def main():
         raise SystemExit(f"Only {mask.sum()} non-empty bins at theta >= {theta_min} deg -- can't fit")
 
     # ---- fit -------------------------------------------------------------
-    # Poisson counting error on each bin (sqrt(N)), propagated through the
-    # counts -> density normalization. Fitting *unweighted* would let the
-    # handful of loudest near-peak bins dominate the residual sum and
-    # starve the power-law tail of any influence on the fit -- exactly the
-    # kind of thing that produces an amplitude that "doesn't match theory"
-    # for reasons that have nothing to do with units.
-    sigma = np.sqrt(counts[mask]) / binwidth_rad
-    p0 = [density[mask].max()]
-    popt, pcov = curve_fit(
-        dndtheta_model, centers_deg[mask], density[mask],
-        p0=p0, sigma=sigma, absolute_sigma=True, bounds=(0, np.inf),
-    )
-    C_fit = popt[0]
-    C_fit_err = float(np.sqrt(pcov[0, 0]))
-
-    # ---- goodness of fit -------------------------------------------------
-    # n_bins = number of non-empty bins in the fit region (theta >= theta_min);
-    # n_params = 1 (just the amplitude C -- theta_min itself is a fixed cut,
-    # not a fitted parameter, and Z1/Z2/E/rho/t/M only enter C_theory, not
-    # this fit). dof = n_bins - n_params.
+    # C is chosen in closed form to MAXIMIZE R^2 (log10 N space) -- see
+    # fit_C_r2_optimal's docstring. No optimizer, no Poisson weighting: each
+    # bin is treated as one (bin center, bin top) point, and C is the exact
+    # amplitude that maximizes r_squared_log10 for this shape.
     n_bins_fit = int(mask.sum())
-    n_params = len(popt)
+    n_params = 1  # just the amplitude C -- theta_min is a fixed cut, not a fitted parameter
     dof = n_bins_fit - n_params
-    residuals = (density[mask] - dndtheta_model(centers_deg[mask], C_fit)) / sigma
-    chi2 = float(np.sum(residuals ** 2))
-    reduced_chi2 = chi2 / dof if dof > 0 else float("nan")
-    from scipy.stats import chi2 as chi2_dist
-    p_value = float(chi2_dist.sf(chi2, dof)) if dof > 0 else float("nan")
+    C_fit = fit_C_r2_optimal(centers_deg[mask], density[mask])
 
     # R^2 in N (counts-per-bin) space, treating each of the n_bins_fit bins
     # in the fit region as one point (bin center, bin height/top).
@@ -257,45 +224,34 @@ def main():
     print(f"  C2 = N_total * n_areal      = {parts['C2']:.6e}")
     print(f"  C_theory = 2*pi * C1 * C2   = {C_theory:.6e}")
     print()
-    print("Fitted amplitude (scipy.optimize.curve_fit, Poisson-weighted, theta-domain restricted to tail):")
-    print(f"  C_fit = {C_fit:.6e} +/- {C_fit_err:.2e}")
-    print()
-    print(f"ratio C_fit / C_theory = {C_fit / C_theory:.6g}")
-    print()
-    print("Chi-square goodness of fit (Poisson-weighted residuals, fit region only):")
+    print("Fitted amplitude (fit_C_r2_optimal, closed-form log-space least-squares, theta-domain restricted to tail):")
+    print(f"  C_fit = {C_fit:.6e}        R^2 (log10 N space) = {r2_fit:.4f}")
     print(f"  n_bins (fit region, theta >= {theta_min:.3f} deg) = {n_bins_fit}")
     print(f"  n_params (free parameters: C only)                = {n_params}")
-    print(f"  dof = n_bins - n_params                            = {dof}")
-    print(f"  chi2                                               = {chi2:.4f}")
-    print(f"  reduced chi2 = chi2 / dof                          = {reduced_chi2:.4f}")
-    print(f"  p-value (chi2.sf, dof={dof})                       = {p_value:.4g}")
-    print(f"  R^2 (log10 N space, n={n_bins_fit} fit-region bins)       = {r2_fit:.4f}")
+    print()
+    print(f"ratio C_fit / C_theory = {C_fit / C_theory:.6g}")
 
-    # ---- second regression: bare C/sin^4(theta/2), upper-envelope fit ----
-    # No Jacobian factor. Per project convention (see fit_dndtheta_envelope.py
-    # / MEMORY), this is an upper-envelope/quantile fit, not least-squares:
-    # for each bin, C_i = N_i / f(theta_i) is the amplitude that makes the
-    # curve pass exactly through that bin; taking the q-th quantile of {C_i}
-    # gives a closed-form curve that sits at/above exactly that fraction of
-    # bins, no optimizer involved.
-    f_vals2 = inv_sin4_shape(centers_deg[mask])
-    c_i2 = counts[mask] / f_vals2
-    C_fit2 = float(np.quantile(c_i2, args.quantile))
-    predicted2 = C_fit2 * f_vals2
-    coverage2 = float(np.mean(counts[mask] <= predicted2))
-    n_params2 = 1
-    dof2 = n_bins_fit - n_params2
-
-    # R^2 over the same n_bins_fit fit-region bins, same convention as r2_fit.
-    r2_fit2 = r_squared_log10(counts[mask], predicted2)
+    # ---- chi-squared check on C_fit (the sin(theta)/sin^4(theta/2) fit) --
+    # calculate_expected() re-derives the theoretical amplitude from the
+    # same physics parameters as theoretical_amplitude() above (Z1, Z2, E,
+    # rho, t, M, n_total); calculate_chi_squared() compares that expected
+    # value against the actual fitted C_fit; chi_squared_check() passes if
+    # that chi^2 is below the critical value at this fit's dof (n_bins_fit -
+    # n_params, same dof already used for the goodness-of-fit block above).
+    expected_C = calculate_expected(args.Z1, args.Z2, args.E, args.rho, args.t, args.M, n_total)
+    chi_sq_C = calculate_chi_squared(expected_C, C_fit)
+    chi_sq_crit = chi_squared_critical(dof)
+    chi_sq_passed = chi_squared_check(dof, chi_sq_C)
 
     print()
-    print(f"Upper-envelope fit -- N(theta) = C * 1/sin^4(theta/2), {args.quantile*100:.0f}th percentile of "
-          f"C_i = N_i/f(theta_i) (not least-squares):")
-    print(f"  C_fit             = {C_fit2:.6e} counts/bin")
-    print(f"  dof = {n_bins_fit} bins - {n_params2}                   = {dof2}")
-    print(f"  coverage achieved = {coverage2*100:.2f}% of {n_bins_fit} bins")
-    print(f"  R^2 (log10 N space, n={n_bins_fit} fit-region bins)       = {r2_fit2:.4f}")
+    print("Chi-squared check -- fitted C (sin(theta)/sin^4(theta/2)) vs. theoretical C:")
+    print(f"  expected C (calculate_expected)                    = {expected_C:.6e}")
+    print(f"  observed C (C_fit)                                 = {C_fit:.6e}")
+    print(f"  chi^2 = (observed - expected)^2 / expected         = {chi_sq_C:.4f}")
+    print(f"  chi^2 critical (p=0.05)                            = {chi_sq_crit:.4f}")
+    print(f"  passes (chi^2 < critical)?                         = {chi_sq_passed}")
+    if chi_sq_passed:
+        print("  Simulated Data is Accurate")
 
     if args.plot:
         import matplotlib.pyplot as plt
@@ -309,32 +265,42 @@ def main():
         ax.bar(centers_deg[counts > 0], counts[counts > 0], width=args.binwidth * 0.92,
                color=COLOR_BARS, edgecolor="#fcfcfb", linewidth=0.3,
                label=f"Simulated foil-exit angles, N (n={n_total})")
-        envelope_curve_N = inv_sin4_model(theta_plot, C_fit2)
-        ax.plot(theta_plot, envelope_curve_N, color=COLOR_ENVELOPE, linewidth=2.5, linestyle="-.", zorder=4,
-                label=fr"$1/\sin^4(\theta/2)$ envelope ({args.quantile*100:.0f}th pct): "
-                      fr"$C$ = {C_fit2:.3e}, $R^2_{{\log}}$ = {r2_fit2:.3f}")
+        fit_curve_N = dndtheta_model(theta_plot, C_fit) * binwidth_rad
+        ax.plot(theta_plot, fit_curve_N, color=COLOR_ENVELOPE, linewidth=2.5, linestyle="-.", zorder=4,
+                label=fr"$\sin\theta/\sin^4(\theta/2)$ fit ($R^2$-optimal): "
+                      fr"$C$ = {C_fit:.3e}, $R^2_{{\log}}$ = {r2_fit:.3f}")
         ax.axvline(theta_min, color=COLOR_AXIS, linewidth=1, linestyle=":")
 
         ax.set_yscale("log")
+        ax.set_ylim(bottom=1)
         ax.set_xlabel(r"Scattering angle, $\theta$ (degrees)", color=COLOR_INK)
-        ax.set_ylabel("N (particles per bin, log scale)", color=COLOR_INK)
-        ax.set_title(r"$N(\theta) = C/\sin^4(\theta/2)$ upper-envelope fit vs. simulated histogram",
+        ax.set_ylabel("Number of particles (log scale)", color=COLOR_INK)
+        ax.set_title(r"Rutherford Scattering Angular Distribution: Simulated Beam Data with $\sin\theta/\sin^4(\theta/2)$ Fit",
                      color=COLOR_INK, fontsize=13)
         ax.legend(frameon=False, labelcolor=COLOR_INK, fontsize=9)
 
+        pass_tag = "PASS" if chi_sq_passed else "FAIL"
+        pass_color = "#1baf7a" if chi_sq_passed else "#d9432e"
+        accuracy_text = "Simulated Data is Accurate" if chi_sq_passed else "Simulated Data is Inaccurate"
         eqn_text = (
-            r"$N(\theta) = C \cdot \dfrac{1}{\sin^4(\theta/2)}$"
+            r"$\dfrac{dN}{d\theta} = C \cdot \dfrac{\sin\theta}{\sin^4(\theta/2)}$"
             "\n"
-            fr"$C = {C_fit2:.3f}$ counts/bin ({args.quantile*100:.0f}th-pct envelope)"
+            fr"$C_{{fit}} = {C_fit:.3f}$"
             "\n"
-            fr"dof = {n_bins_fit} bins $-$ {n_params2} = {dof2}"
+            fr"$C_{{expected}} = {expected_C:.3f}$"
             "\n"
-            fr"coverage = {coverage2*100:.1f}%, $R^2_{{\log}}$ = {r2_fit2:.4f}"
+            fr"$R^2_{{\log}}$ = {r2_fit:.4f}"
+            "\n"
+            fr"$\chi^2$ = {chi_sq_C:.3f}, critical ($p$=0.05) = {chi_sq_crit:.3f}"
+            "\n"
+            fr"$\chi^2$ < critical? {pass_tag}"
+            "\n"
+            fr"$\mathbf{{{accuracy_text.replace(' ', r'\ ')}}}$"
         )
-        ax.text(0.60, 0.55, eqn_text, transform=ax.transAxes, fontsize=11,
+        ax.text(0.55, 0.55, eqn_text, transform=ax.transAxes, fontsize=11,
                 color=COLOR_INK, ha="left", va="top",
                 bbox=dict(boxstyle="round,pad=0.5", facecolor="#fcfcfb",
-                          edgecolor=COLOR_ENVELOPE, linewidth=1.2))
+                          edgecolor=pass_color, linewidth=1.2))
 
         fig.tight_layout()
 

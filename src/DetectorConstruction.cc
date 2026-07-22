@@ -70,7 +70,7 @@ constexpr G4double kChamberRadius = 100. * cm / 2.;  // 100.0 cm height spec
 // Gold foil target: single sheet, perpendicular to the beam, at the
 // chamber's own center (BeamlineLayout::kFoilLocalZ == 0)
 constexpr G4double kFoilHalfXY = 1.905 * cm / 2.;  // 1.905 cm x 1.905 cm
-constexpr G4double kFoilHalfZ = 1. * um / 2.;  // 1.0 um thickness
+constexpr G4double kFoilHalfZ = 100. * um / 2.;  // 1.0 um thickness
 
 // World must contain both the analytic chamber assembly above and the CAD
 // overlay loaded from gdml/my_model.gdml below. As authored, that mesh's
