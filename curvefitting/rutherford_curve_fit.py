@@ -162,12 +162,12 @@ def main():
                          help="degrees; restrict the fit to theta >= this (default: auto-detect the "
                               "histogram peak and fit only the tail past it, since Rutherford's "
                               "point-charge formula doesn't describe the multiple-scattering bulk)")
-    parser.add_argument("--Z1", type=float, default=1.0, help="projectile charge number (default 1, proton)")
-    parser.add_argument("--Z2", type=float, default=79.0, help="target charge number (default 79, gold)")
+    parser.add_argument("--Z1", type=float, default=2.0, help="projectile charge number (default 2, alpha)")
+    parser.add_argument("--Z2", type=float, default=14.0, help="target charge number (default 14, silicon)")
     parser.add_argument("--E", type=float, default=12.0, help="incident kinetic energy, MeV (default 6.0)")
-    parser.add_argument("--rho", type=float, default=19.3, help="target density, g/cm^3 (default 19.3, gold)")
-    parser.add_argument("--t", type=float, default=0.1, help="foil thickness, cm (default 0.0001 = 1 um, matches DetectorConstruction.cc kFoilHalfZ)")
-    parser.add_argument("--M", type=float, default=197.0, help="target molar mass, g/mol (default 197, gold)")
+    parser.add_argument("--rho", type=float, default=2.33, help="target density, g/cm^3 (default 2.33, silicon)")
+    parser.add_argument("--t", type=float, default=1e-4, help="foil thickness, cm (default 1e-4 = 1 um, matches DetectorConstruction.cc kFoilHalfZ)")
+    parser.add_argument("--M", type=float, default=28.0855, help="target molar mass, g/mol (default 28.0855, silicon)")
     parser.add_argument("--no-plot", dest="plot", action="store_false", help="skip writing the PNG plot (a plot is written by default)")
     args = parser.parse_args()
 
@@ -275,7 +275,12 @@ def main():
         ax.set_ylim(bottom=1)
         ax.set_xlabel(r"Scattering angle, $\theta$ (degrees)", color=COLOR_INK)
         ax.set_ylabel("Number of particles (log scale)", color=COLOR_INK)
-        ax.set_title(r"Rutherford Scattering Angular Distribution: Simulated Beam Data with $\sin\theta/\sin^4(\theta/2)$ Fit",
+        foil_um = args.t * 1e4  # cm -> um
+        particle_label = {1.0: "Proton", 2.0: "Alpha Particle"}.get(args.Z1, f"Z1={args.Z1:g}")
+        target_label = {79.0: "Gold", 14.0: "Silicon", 6.0: "Carbon"}.get(args.Z2, f"Z2={args.Z2:g}")
+        ax.set_title(rf"Rutherford Scattering Angular Distribution ({foil_um:g} $\mu$m {target_label} Foil) {particle_label} 12MeV"
+                     "\n"
+                     r"Simulated Beam Data with $\sin\theta/\sin^4(\theta/2)$ Fit",
                      color=COLOR_INK, fontsize=13)
         ax.legend(frameon=False, labelcolor=COLOR_INK, fontsize=9)
 

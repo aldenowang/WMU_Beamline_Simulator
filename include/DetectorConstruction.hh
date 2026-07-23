@@ -36,6 +36,7 @@
 
 class G4VPhysicalVolume;
 class G4LogicalVolume;
+class G4VSolid;
 
 namespace B1
 {
@@ -65,8 +66,24 @@ class DetectorConstruction : public G4VUserDetectorConstruction
 
     G4LogicalVolume* GetScoringVolume() const { return fScoringVolume; }
 
+    // The CAD-imported chamber shell (gdml/my_model.gdml), "CADModel" --
+    // vacuum, rendering-only geometry (see Construct()). Exposed so
+    // SteppingAction can stop tracks on contact for the visual run without
+    // giving this volume a real material, which would perturb the physics.
+    G4LogicalVolume* GetCadVolume() const { return fCadVolume; }
+
+    // The CAD shell's own G4VSolid (placed with identity rotation/translation
+    // directly under World, so World-frame coordinates need no transform to
+    // use here). Exposed so SteppingAction can test a step's actual segment
+    // against the solid directly, as a fallback for thin/tapered mesh
+    // features the navigator's per-step volume bookkeeping can tunnel
+    // through undetected -- see the comment at its use site.
+    G4VSolid* GetCadSolid() const { return fCadSolid; }
+
   protected:
     G4LogicalVolume* fScoringVolume = nullptr;
+    G4LogicalVolume* fCadVolume = nullptr;
+    G4VSolid* fCadSolid = nullptr;
 };
 
 }  // namespace B1

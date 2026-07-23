@@ -13,7 +13,7 @@ namespace B1::ScatteringRecorder
 {
 
 // Recording point along the beamline:
-//  - FoilExit: angle the instant a primary leaves the gold foil -- the true
+//  - FoilExit: angle the instant a primary leaves the silicon foil -- the true
 //    scattering event, over the full angular range (including the rare
 //    large-angle single-Coulomb-scattering tail Rutherford's law predicts).
 enum class Channel { FoilExit };

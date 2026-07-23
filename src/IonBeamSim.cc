@@ -48,7 +48,7 @@ namespace B1
 
 namespace
 {
-// Van de Graaff H+ beam parameters
+// Van de Graaff alpha beam parameters
 constexpr G4double kBeamEnergyPerNucleon = 12.0 * MeV;  
 constexpr G4double kBeamEnergySpread = 0.0005 * kBeamEnergyPerNucleon;  // 0.05% 
 constexpr G4double kBeamSpotSigma = 0.5 * mm;  // beam radius
@@ -79,7 +79,7 @@ IonPrimaryGeneratorAction::IonPrimaryGeneratorAction()
 
   //define the particle type in the beamline
   G4ParticleTable* particleTable = G4ParticleTable::GetParticleTable();
-  G4ParticleDefinition* particle = particleTable->FindParticle("proton");
+  G4ParticleDefinition* particle = particleTable->FindParticle("alpha");
   fParticleGun->SetParticleDefinition(particle);
   fParticleGun->SetParticleMomentumDirection(G4ThreeVector(0., 0., 1.)); //moving in 1 direction initially (z)
   fParticleGun->SetParticleEnergy(kBeamEnergyPerNucleon);

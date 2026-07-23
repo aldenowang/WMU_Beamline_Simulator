@@ -144,7 +144,7 @@ void RunAction::EndOfRunAction(const G4Run* run)
          << "------------------------------------------------------------" << G4endl << G4endl;
 
   // Drain the per-particle Rutherford scattering angles (recorded in
-  // SteppingAction as each primary leaves the gold foil) to a CSV in the
+  // SteppingAction as each primary leaves the silicon foil) to a CSV in the
   // data/ folder, so they can be checked against Rutherford's
   // 1/sin^4(theta/2) prediction offline. Master-only (worker threads all feed the same
   // recorder; by the time the master's EndOfRunAction runs, every worker has

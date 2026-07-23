@@ -1,8 +1,8 @@
 \page IonBeamSim Ion Beam Simulator
 
- This project simulates an H+ (proton) ion beam from a Van de Graaff
+ This project simulates an alpha (He2+) ion beam from a Van de Graaff
  accelerator traveling down a cylindrical beamline and scattering off a
- gold foil target (Rutherford scattering), measured by a PPAC (not modeled
+ silicon foil target (Rutherford scattering), measured by a PPAC (not modeled
  in the simulation). It started from the Geant4 basic/B1 example template;
  the notes below still describe the underlying Geant4 mechanics that
  carried over.

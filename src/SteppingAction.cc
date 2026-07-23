@@ -38,6 +38,7 @@
 #include "G4Step.hh"
 #include "G4SystemOfUnits.hh"
 #include "G4Track.hh"
+#include "G4VSolid.hh"
 #include "G4VVisManager.hh"
 
 namespace B1
@@ -55,11 +56,50 @@ void SteppingAction::UserSteppingAction(const G4Step* step)
     const auto detConstruction = static_cast<const DetectorConstruction*>(
       G4RunManager::GetRunManager()->GetUserDetectorConstruction());
     fScoringVolume = detConstruction->GetScoringVolume();
+    fCadVolume = detConstruction->GetCadVolume();
+    fCadSolid = detConstruction->GetCadSolid();
   }
 
   // get volume of the current step
   G4LogicalVolume* volume =
     step->GetPreStepPoint()->GetTouchableHandle()->GetVolume()->GetLogicalVolume();
+
+  // Visual runs only (production/no-vis runs are untouched -- all scoring
+  // already happens at the foil, well upstream of this wall, so this can't
+  // change any recorded data either way): stop tracks the instant they reach
+  // the CAD-imported chamber shell, purely so trajectories in the viewer
+  // terminate at the wall instead of sailing on through the (vacuum,
+  // rendering-only) shell out to the edge of the World volume.
+  if (G4VVisManager::GetConcreteInstance() != nullptr) {
+    if (volume == fCadVolume) {
+      step->GetTrack()->SetTrackStatus(fStopAndKill);
+      return;
+    }
+
+    // Fallback for the tapered/narrow end of the pipe mesh: at that tip the
+    // shell can be thinner than the navigator's boundary tolerance, so a
+    // step occasionally tunnels straight through it in one hop without
+    // "CADModel" ever showing up as a pre-step volume (seen in
+    // images/Screenshot 2026-07-23 112112.png: one trajectory sails through
+    // the tapered wall and keeps going all the way to the World edge instead
+    // of stopping like the rest). Catch that by testing the step's actual
+    // start->end segment against the CAD solid directly -- independent of
+    // the navigator's per-step volume bookkeeping -- rather than only ever
+    // trusting which logical volume the navigator says we're in.
+    if (fCadSolid != nullptr) {
+      const G4ThreeVector& p = step->GetPreStepPoint()->GetPosition();
+      const G4ThreeVector& post = step->GetPostStepPoint()->GetPosition();
+      G4ThreeVector delta = post - p;
+      G4double stepLen = delta.mag();
+      if (stepLen > 0.) {
+        G4double distToIn = fCadSolid->DistanceToIn(p, delta / stepLen);
+        if (distToIn < stepLen) {
+          step->GetTrack()->SetTrackStatus(fStopAndKill);
+          return;
+        }
+      }
+    }
+  }
 
   // Rutherford scattering-angle scoring, restricted to primaries
   // (secondaries were never on "the beam path" to begin with) and to
@@ -73,7 +113,7 @@ void SteppingAction::UserSteppingAction(const G4Step* step)
     const G4Track* track = step->GetTrack();
     const G4ThreeVector& vertexDir = track->GetVertexMomentumDirection();
 
-    // The instant a primary leaves the gold foil -- the true
+    // The instant a primary leaves the silicon foil -- the true
     // scattering event, over the full angular range including the rare
     // large-angle single-Coulomb-scattering tail Rutherford's law predicts.
     // Uses the POST-step point: the scattering happened during this step,

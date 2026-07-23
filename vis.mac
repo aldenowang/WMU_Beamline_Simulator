@@ -107,7 +107,7 @@
 /vis/set/lineWidth     # Revert to default line width (1.)
 #
 # To get nice view
-# Show the CAD/GDML model plus the gold foil target; hide the World box and
+# Show the CAD/GDML model plus the silicon foil target; hide the World box and
 # the Chamber, the analytic physics volume that exists purely to drive the
 # simulation and has no interesting shape of its own.
 /vis/geometry/set/visibility World 0 false

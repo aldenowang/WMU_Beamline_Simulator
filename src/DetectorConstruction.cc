@@ -67,10 +67,10 @@ namespace
 // transverse radius.
 constexpr G4double kChamberRadius = 100. * cm / 2.;  // 100.0 cm height spec
 
-// Gold foil target: single sheet, perpendicular to the beam, at the
+// Silicon foil target: single sheet, perpendicular to the beam, at the
 // chamber's own center (BeamlineLayout::kFoilLocalZ == 0)
 constexpr G4double kFoilHalfXY = 1.905 * cm / 2.;  // 1.905 cm x 1.905 cm
-constexpr G4double kFoilHalfZ = 100. * um / 2.;  // 1.0 um thickness
+constexpr G4double kFoilHalfZ = 1. * um / 2.;  // 1.0 um thickness
 
 // World must contain both the analytic chamber assembly above and the CAD
 // overlay loaded from gdml/my_model.gdml below. As authored, that mesh's
@@ -474,17 +474,17 @@ G4VPhysicalVolume* DetectorConstruction::Construct()
                     checkOverlaps);
 
   //
-  // Gold foil target (single sheet; swap "G4_Au" for "G4_C" for a carbon foil)
+  // Silicon foil target (single sheet; swap "G4_Si" for "G4_Au" for a gold foil)
   //
-  G4Material* foilMat = nist->FindOrBuildMaterial("G4_Au");
+  G4Material* foilMat = nist->FindOrBuildMaterial("G4_Si");
 
   auto solidFoil = new G4Box("Foil", kFoilHalfXY, kFoilHalfXY, kFoilHalfZ);
   auto logicFoil = new G4LogicalVolume(solidFoil, foilMat, "Foil");
 
-  // Give the foil an actual gold colour and force it solid; at 1 um thick
+  // Give the foil an actual silicon colour and force it solid; at 1 um thick
   // it's otherwise so thin it can disappear entirely under default vis
   // attributes, especially once seen through the semi-transparent CAD shell.
-  auto foilVis = new G4VisAttributes(G4Colour(1.0, 0.84, 0.0));
+  auto foilVis = new G4VisAttributes(G4Colour(0.35, 0.37, 0.4));
   foilVis->SetForceSolid(true);
   logicFoil->SetVisAttributes(foilVis);
 
@@ -501,7 +501,7 @@ G4VPhysicalVolume* DetectorConstruction::Construct()
   auto logicCad = new G4LogicalVolume(solidCad, vacuum, "CADModel");
 
   // Alpha kept moderate so the shell reads as solid in the UI while the
-  // gold foil target and beam inside remain visible through it.
+  // silicon foil target and beam inside remain visible through it.
   auto cadVis = new G4VisAttributes(G4Colour(0.6, 0.6, 0.6, 0.35));
   cadVis->SetForceSolid(true);
   logicCad->SetVisAttributes(cadVis);
@@ -514,8 +514,13 @@ G4VPhysicalVolume* DetectorConstruction::Construct()
                                    false, 0, false);
   physCad->CheckOverlaps(100000, 0., true);
 
-  // Score energy deposited in the gold foil
+  // Score energy deposited in the silicon foil
   fScoringVolume = logicFoil;
+
+  // Exposed so SteppingAction can stop tracks that reach the chamber wall
+  // (see GetCadVolume() doc comment).
+  fCadVolume = logicCad;
+  fCadSolid = solidCad;
 
   return physWorld;
 }

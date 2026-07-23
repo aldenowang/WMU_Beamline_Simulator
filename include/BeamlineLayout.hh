@@ -2,7 +2,7 @@
 /// \file BeamlineLayout.hh
 /// \brief Shared beam-path spec constants used by both DetectorConstruction
 ///        (to size/place the vacuum chamber and foil) and
-///        IonPrimaryGeneratorAction (to place the proton gun). Keeping a
+///        IonPrimaryGeneratorAction (to place the alpha gun). Keeping a
 ///        single source of truth means the analytic physics geometry and
 ///        the simulated beam can't drift out of sync with each other.
 
@@ -15,7 +15,7 @@
 namespace B1::Layout
 {
 
-// Van de Graaff beamline hardware spec, measured from the gold foil target:
+// Van de Graaff beamline hardware spec, measured from the silicon foil target:
 constexpr G4double kDistanceStartToFoil = 100. * cm;  // gun to foil (upstream)
 
 // The foil sits at the exact center of the chamber, 1 m from each wall, so

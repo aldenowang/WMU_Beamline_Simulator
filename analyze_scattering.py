@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""Plot simulated proton scattering angles against the Rutherford 1/sin^4(theta/2) prediction.
+"""Plot simulated alpha particle scattering angles against the Rutherford 1/sin^4(theta/2) prediction.
 
 Reads the scattering_angles_foil_*.csv files written by RunAction (one
 "angle_deg" column, one row per primary particle): the angle the instant
-each primary leaves the gold foil -- the actual scattering event, spanning
+each primary leaves the silicon foil -- the actual scattering event, spanning
 the full angular range including the rare large-angle single-Coulomb-
 scattering tail Rutherford's law predicts.
 
@@ -142,7 +142,7 @@ def plot_foil(angles, out_path):
     ax.set_xlabel("Scattering angle from beam path, θ (degrees, log scale)", color=COLOR_INK)
     ax.set_ylabel("Number of particles (log scale)", color=COLOR_INK)
     ax.set_title(
-        "Rutherford scattering: proton angle on exiting the gold foil",
+        "Rutherford scattering: alpha particle angle on exiting the 100 µm silicon foil",
         color=COLOR_INK,
         fontsize=13,
     )

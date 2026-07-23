@@ -33,6 +33,7 @@
 
 class G4LogicalVolume;
 class G4Step;
+class G4VSolid;
 
 namespace B1
 {
@@ -53,6 +54,8 @@ class SteppingAction : public G4UserSteppingAction
   private:
     EventAction* fEventAction = nullptr;
     G4LogicalVolume* fScoringVolume = nullptr;
+    G4LogicalVolume* fCadVolume = nullptr;
+    G4VSolid* fCadSolid = nullptr;
 };
 
 }  // namespace B1

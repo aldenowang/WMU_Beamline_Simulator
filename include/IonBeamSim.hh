@@ -39,7 +39,7 @@ class G4VPhysicalVolume;
 namespace B1
 {
 
-/// Physics list for H+ ion beam / Rutherford scattering simulation.
+/// Physics list for alpha ion beam / Rutherford scattering simulation.
 ///
 /// Combines high-precision EM physics (single Coulomb scattering, needed
 /// for the large-angle Rutherford tail), decay physics, ion stopping-power
@@ -52,13 +52,13 @@ class IonPhysicsList : public G4VModularPhysicsList
     ~IonPhysicsList() override = default;
 };
 
-/// Primary generator for the H+ (proton) Van de Graaff beam.
+/// Primary generator for the alpha (He2+) Van de Graaff beam.
 ///
-/// Fires protons along +z from 100 cm upstream of the foil (positioned per
+/// Fires alpha particles along +z from 100 cm upstream of the foil (positioned per
 /// BeamlineLayout::kFoilLocalZ within the "Chamber" volume, which
 /// DetectorConstruction centers on the real GDML model), with a Gaussian
 /// beam spot (1 sigma = 0.5 mm), Gaussian angular divergence (1 sigma =
-/// 0.5 mrad), and a Gaussian energy spread (6.0 MeV/u, sigma = 0.05%)
+/// 0.5 mrad), and a Gaussian energy spread (12.0 MeV, sigma = 0.05%)
 /// matching the Van de Graaff beam spec.
 
 class IonPrimaryGeneratorAction : public G4VUserPrimaryGeneratorAction
