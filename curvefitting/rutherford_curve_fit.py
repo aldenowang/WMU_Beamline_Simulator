@@ -166,7 +166,7 @@ def main():
     parser.add_argument("--Z2", type=float, default=79.0, help="target charge number (default 79, gold)")
     parser.add_argument("--E", type=float, default=12.0, help="incident kinetic energy, MeV (default 6.0)")
     parser.add_argument("--rho", type=float, default=19.3, help="target density, g/cm^3 (default 19.3, gold)")
-    parser.add_argument("--t", type=float, default=0.01, help="foil thickness, cm (default 0.0001 = 1 um, matches DetectorConstruction.cc kFoilHalfZ)")
+    parser.add_argument("--t", type=float, default=0.1, help="foil thickness, cm (default 0.0001 = 1 um, matches DetectorConstruction.cc kFoilHalfZ)")
     parser.add_argument("--M", type=float, default=197.0, help="target molar mass, g/mol (default 197, gold)")
     parser.add_argument("--no-plot", dest="plot", action="store_false", help="skip writing the PNG plot (a plot is written by default)")
     args = parser.parse_args()
@@ -283,7 +283,7 @@ def main():
         pass_color = "#1baf7a" if chi_sq_passed else "#d9432e"
         accuracy_text = "Simulated Data is Accurate" if chi_sq_passed else "Simulated Data is Inaccurate"
         eqn_text = (
-            r"$\dfrac{dN}{d\theta} = C \cdot \dfrac{\sin\theta}{\sin^4(\theta/2)}$"
+            r"$N(\theta) = C \cdot \dfrac{\sin\theta}{\sin^4(\theta/2)}$"
             "\n"
             fr"$C_{{fit}} = {C_fit:.3f}$"
             "\n"
